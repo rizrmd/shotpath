@@ -36,6 +36,9 @@ public class ShotPath : Form
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern bool DestroyIcon(IntPtr handle);
     
+    [DllImport("user32.dll")]
+    private static extern bool SetProcessDPIAware();
+    
     private const int HOTKEY_ID = 9000;
     private const int HOTKEY_ID_CTRL = 9001;
     private const int HOTKEY_ID_ALT = 9002;
@@ -142,18 +145,27 @@ public class ShotPath : Form
     
     private void TakeScreenshot(bool copyAsImage = false, bool uploadToImgur = false)
     {
-        this.Hide();
+        // Small delay to let menus settle
+        System.Threading.Thread.Sleep(100);
         
         selectionForm = new SelectionForm();
         if (selectionForm.ShowDialog() == DialogResult.OK)
         {
             Rectangle selection = selectionForm.Selection;
             
+            // Use the pre-captured screenshot from SelectionForm
             using (Bitmap bitmap = new Bitmap(selection.Width, selection.Height))
             {
                 using (Graphics g = Graphics.FromImage(bitmap))
                 {
-                    g.CopyFromScreen(selection.Location, Point.Empty, selection.Size);
+                    // Account for virtual screen offset
+                    Rectangle sourceRect = new Rectangle(
+                        selection.X - SystemInformation.VirtualScreen.X,
+                        selection.Y - SystemInformation.VirtualScreen.Y,
+                        selection.Width,
+                        selection.Height
+                    );
+                    g.DrawImage(selectionForm.Screenshot, 0, 0, sourceRect, GraphicsUnit.Pixel);
                 }
                 
                 string fileName = string.Format("screenshot_{0:yyyyMMdd_HHmmss}.png", DateTime.Now);
@@ -549,6 +561,7 @@ public class ShotPath : Form
     [STAThread]
     static void Main()
     {
+        SetProcessDPIAware();
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new ShotPath());
@@ -560,18 +573,43 @@ public class SelectionForm : Form
     private Point startPoint;
     private Rectangle selection;
     private bool isSelecting;
+    private Bitmap screenshot;
     
     public Rectangle Selection { get { return selection; } }
+    public Bitmap Screenshot { get { return screenshot; } }
+    
+    [DllImport("user32.dll")]
+    private static extern int SetWindowLong(IntPtr hWnd, int nIndex, int dwNewLong);
+    
+    [DllImport("user32.dll")]
+    private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
+    
+    private const int GWL_EXSTYLE = -20;
+    private const int WS_EX_TRANSPARENT = 0x00000020;
+    private const int WS_EX_LAYERED = 0x00080000;
     
     public SelectionForm()
     {
+        // Set DPI awareness
+        this.AutoScaleMode = AutoScaleMode.None;
+        
+        // Get virtual screen bounds (all monitors)
+        Rectangle bounds = SystemInformation.VirtualScreen;
+        
+        // Capture screenshot before showing form
+        screenshot = new Bitmap(bounds.Width, bounds.Height);
+        using (Graphics g = Graphics.FromImage(screenshot))
+        {
+            g.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size);
+        }
+        
         this.FormBorderStyle = FormBorderStyle.None;
-        this.BackColor = Color.Black;
-        this.Opacity = 0.3;
         this.Cursor = Cursors.Cross;
-        this.WindowState = FormWindowState.Maximized;
+        this.Location = new Point(bounds.X, bounds.Y);
+        this.Size = new Size(bounds.Width, bounds.Height);
         this.TopMost = true;
         this.DoubleBuffered = true;
+        this.ShowInTaskbar = false;
         
         this.MouseDown += OnMouseDown;
         this.MouseMove += OnMouseMove;
@@ -618,20 +656,36 @@ public class SelectionForm : Form
     
     private void OnPaint(object sender, PaintEventArgs e)
     {
+        // Draw the screenshot first
+        if (screenshot != null)
+        {
+            e.Graphics.DrawImage(screenshot, 0, 0, this.Width, this.Height);
+        }
+        
         if (selection.Width > 0 && selection.Height > 0)
         {
+            // Draw darkened overlay outside selection
+            Region region = new Region(this.ClientRectangle);
+            region.Exclude(selection);
+            
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
+            {
+                e.Graphics.FillRegion(brush, region);
+            }
+            
+            // Draw selection border
             using (Pen pen = new Pen(Color.Red, 2))
             {
                 pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
                 e.Graphics.DrawRectangle(pen, selection);
             }
-            
-            Region region = new Region(this.ClientRectangle);
-            region.Exclude(selection);
-            
-            using (SolidBrush brush = new SolidBrush(Color.FromArgb(100, 0, 0, 0)))
+        }
+        else
+        {
+            // Darken entire screen when no selection
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(60, 0, 0, 0)))
             {
-                e.Graphics.FillRegion(brush, region);
+                e.Graphics.FillRectangle(brush, this.ClientRectangle);
             }
         }
     }
@@ -643,5 +697,17 @@ public class SelectionForm : Form
             this.DialogResult = DialogResult.Cancel;
             this.Close();
         }
+    }
+    
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing)
+        {
+            if (screenshot != null)
+            {
+                screenshot.Dispose();
+            }
+        }
+        base.Dispose(disposing);
     }
 }
