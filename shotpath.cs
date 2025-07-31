@@ -185,40 +185,17 @@ public class ShotPath : Form
     
     private void CopyAsPathMenu(object sender, EventArgs e)
     {
-        if (!string.IsNullOrEmpty(lastScreenshotPath) && File.Exists(lastScreenshotPath))
-        {
-            Clipboard.SetText(lastScreenshotPath);
-            ShowSuccessIcon();
-        }
-        else
-        {
-            TakeScreenshot(false);
-        }
+        TakeScreenshot(false);
     }
     
     private void CopyAsImageMenu(object sender, EventArgs e)
     {
-        if (lastScreenshotImage != null)
-        {
-            Clipboard.SetImage(lastScreenshotImage);
-            ShowSuccessIcon();
-        }
-        else
-        {
-            TakeScreenshot(true);
-        }
+        TakeScreenshot(true);
     }
     
     private void CopyAsImgurMenu(object sender, EventArgs e)
     {
-        if (!string.IsNullOrEmpty(lastScreenshotPath) && File.Exists(lastScreenshotPath))
-        {
-            UploadToImgur(lastScreenshotPath);
-        }
-        else
-        {
-            TakeScreenshot(false, true);
-        }
+        TakeScreenshot(false, true);
     }
     
     private void OpenFolder(object sender, EventArgs e)
