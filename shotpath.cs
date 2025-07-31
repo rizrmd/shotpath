@@ -7,6 +7,9 @@ using System.Runtime.InteropServices;
 using Microsoft.Win32;
 using System.Drawing.Drawing2D;
 using System.Drawing.Text;
+using System.Net;
+using System.Text;
+using System.Collections.Generic;
 
 public class ShotPath : Form
 {
@@ -19,6 +22,10 @@ public class ShotPath : Form
     private const string APP_NAME = "ShotPath";
     private const string REGISTRY_KEY = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
     private string screenshotFolder;
+    private Timer loadingTimer;
+    private int loadingFrame = 0;
+    private Timer successTimer;
+    private Icon originalIcon;
     
     [DllImport("user32.dll")]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -31,14 +38,17 @@ public class ShotPath : Form
     
     private const int HOTKEY_ID = 9000;
     private const int HOTKEY_ID_CTRL = 9001;
+    private const int HOTKEY_ID_ALT = 9002;
     private const uint VK_SNAPSHOT = 0x2C; // PrintScreen key
     private const uint MOD_CONTROL = 0x0002;
+    private const uint MOD_ALT = 0x0001;
     
     public ShotPath()
     {
         InitializeComponent();
         RegisterHotKey(this.Handle, HOTKEY_ID, 0, VK_SNAPSHOT);
         RegisterHotKey(this.Handle, HOTKEY_ID_CTRL, MOD_CONTROL, VK_SNAPSHOT);
+        RegisterHotKey(this.Handle, HOTKEY_ID_ALT, MOD_ALT, VK_SNAPSHOT);
         
         // Create shotpath directory in temp
         screenshotFolder = Path.Combine(Path.GetTempPath(), "shotpath");
@@ -58,8 +68,9 @@ public class ShotPath : Form
         this.ShowInTaskbar = false;
         
         trayMenu = new ContextMenuStrip();
-        trayMenu.Items.Add("Copy as Path (PrintScreen)", null, CopyAsPath);
-        trayMenu.Items.Add("Copy as Image (Ctrl+PrintScreen)", null, CopyAsImage);
+        trayMenu.Items.Add("Copy as Path (PrintScreen)", null, CopyAsPathMenu);
+        trayMenu.Items.Add("Copy as Image (Ctrl+PrintScreen)", null, CopyAsImageMenu);
+        trayMenu.Items.Add("Copy as Imgur URL (Alt+PrintScreen)", null, CopyAsImgurMenu);
         trayMenu.Items.Add(new ToolStripSeparator());
         trayMenu.Items.Add("Open Folder", null, OpenFolder);
         trayMenu.Items.Add("Clear Folder", null, ClearFolder);
@@ -121,11 +132,15 @@ public class ShotPath : Form
             {
                 TakeScreenshot(true); // Copy as image
             }
+            else if (id == HOTKEY_ID_ALT)
+            {
+                TakeScreenshot(false, true); // Upload to Imgur
+            }
         }
         base.WndProc(ref m);
     }
     
-    private void TakeScreenshot(bool copyAsImage = false)
+    private void TakeScreenshot(bool copyAsImage = false, bool uploadToImgur = false)
     {
         this.Hide();
         
@@ -148,36 +163,61 @@ public class ShotPath : Form
                 lastScreenshotImage = (Image)bitmap.Clone();
             }
             
-            if (copyAsImage)
+            if (uploadToImgur)
+            {
+                // Upload to Imgur
+                UploadToImgur(lastScreenshotPath);
+            }
+            else if (copyAsImage)
             {
                 // Copy as image
                 Clipboard.SetImage(lastScreenshotImage);
-                trayIcon.ShowBalloonTip(1000, "Screenshot Saved", "Image copied to clipboard", ToolTipIcon.Info);
+                ShowSuccessIcon();
             }
             else
             {
                 // Copy path by default
                 Clipboard.SetText(lastScreenshotPath);
-                trayIcon.ShowBalloonTip(1000, "Screenshot Saved", Path.GetFileName(lastScreenshotPath), ToolTipIcon.Info);
+                ShowSuccessIcon();
             }
         }
     }
     
-    private void CopyAsPath(object sender, EventArgs e)
+    private void CopyAsPathMenu(object sender, EventArgs e)
     {
         if (!string.IsNullOrEmpty(lastScreenshotPath) && File.Exists(lastScreenshotPath))
         {
             Clipboard.SetText(lastScreenshotPath);
-            trayIcon.ShowBalloonTip(1000, "Copied", "Path copied to clipboard", ToolTipIcon.Info);
+            ShowSuccessIcon();
+        }
+        else
+        {
+            TakeScreenshot(false);
         }
     }
     
-    private void CopyAsImage(object sender, EventArgs e)
+    private void CopyAsImageMenu(object sender, EventArgs e)
     {
         if (lastScreenshotImage != null)
         {
             Clipboard.SetImage(lastScreenshotImage);
-            trayIcon.ShowBalloonTip(1000, "Copied", "Image copied to clipboard", ToolTipIcon.Info);
+            ShowSuccessIcon();
+        }
+        else
+        {
+            TakeScreenshot(true);
+        }
+    }
+    
+    private void CopyAsImgurMenu(object sender, EventArgs e)
+    {
+        if (!string.IsNullOrEmpty(lastScreenshotPath) && File.Exists(lastScreenshotPath))
+        {
+            UploadToImgur(lastScreenshotPath);
+        }
+        else
+        {
+            TakeScreenshot(false, true);
         }
     }
     
@@ -240,10 +280,77 @@ public class ShotPath : Form
         }
     }
     
+    private void UploadToImgur(string imagePath)
+    {
+        // Show loading animation
+        Icon originalIcon = trayIcon.Icon;
+        string originalText = trayIcon.Text;
+        
+        // Create loading icons
+        List<Icon> loadingIcons = CreateLoadingIcons();
+        
+        // Start loading animation
+        loadingTimer = new Timer();
+        loadingTimer.Interval = 200;
+        loadingTimer.Tick += (s, e) => {
+            loadingFrame = (loadingFrame + 1) % loadingIcons.Count;
+            trayIcon.Icon = loadingIcons[loadingFrame];
+            string dots = new string('.', (loadingFrame % 4) + 1);
+            trayIcon.Text = "Uploading" + dots;
+        };
+        loadingTimer.Start();
+        
+        // Upload in background
+        System.Threading.ThreadPool.QueueUserWorkItem(_ =>
+        {
+            try
+            {
+                using (WebClient client = new WebClient())
+                {
+                    client.Headers.Add("Authorization", "Client-ID c9a6efb3d7932fd");
+                    byte[] imageData = File.ReadAllBytes(imagePath);
+                    byte[] response = client.UploadData("https://api.imgur.com/3/upload", imageData);
+                    string result = Encoding.UTF8.GetString(response);
+                    
+                    // Parse JSON response to get URL
+                    int linkIndex = result.IndexOf("\"link\":\"") + 8;
+                    int linkEnd = result.IndexOf("\"", linkIndex);
+                    string imgurUrl = result.Substring(linkIndex, linkEnd - linkIndex).Replace("\\/", "/");
+                    
+                    // Copy URL to clipboard on UI thread
+                    this.Invoke((Action)(() =>
+                    {
+                        Clipboard.SetText(imgurUrl);
+                        loadingTimer.Stop();
+                        loadingTimer.Dispose();
+                        foreach (var icon in loadingIcons) icon.Dispose();
+                        trayIcon.Icon = originalIcon;
+                        trayIcon.Text = originalText;
+                        ShowSuccessIcon();
+                    }));
+                }
+            }
+            catch (Exception ex)
+            {
+                this.Invoke((Action)(() =>
+                {
+                    loadingTimer.Stop();
+                    loadingTimer.Dispose();
+                    foreach (var icon in loadingIcons) icon.Dispose();
+                    trayIcon.Icon = originalIcon;
+                    trayIcon.Text = originalText;
+                    MessageBox.Show("Failed to upload to Imgur: " + ex.Message, "Upload Error", 
+                                   MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }));
+            }
+        });
+    }
+    
     private void Exit(object sender, EventArgs e)
     {
         UnregisterHotKey(this.Handle, HOTKEY_ID);
         UnregisterHotKey(this.Handle, HOTKEY_ID_CTRL);
+        UnregisterHotKey(this.Handle, HOTKEY_ID_ALT);
         trayIcon.Visible = false;
         Application.Exit();
     }
@@ -343,6 +450,107 @@ public class ShotPath : Form
             
             return iconCopy;
         }
+    }
+    
+    private List<Icon> CreateLoadingIcons()
+    {
+        List<Icon> icons = new List<Icon>();
+        
+        // Create 8 frames for smooth rotation
+        for (int i = 0; i < 8; i++)
+        {
+            Bitmap bmp = new Bitmap(32, 32);
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.Clear(Color.Transparent);
+                
+                // Draw spinning circle
+                using (Pen pen = new Pen(Color.FromArgb(100, 100, 100), 3))
+                {
+                    g.DrawArc(pen, 8, 8, 16, 16, i * 45, 270);
+                }
+                
+                using (Pen pen = new Pen(Color.Black, 3))
+                {
+                    g.DrawArc(pen, 8, 8, 16, 16, i * 45, 90);
+                }
+            }
+            
+            IntPtr hIcon = bmp.GetHicon();
+            icons.Add(Icon.FromHandle(hIcon));
+            bmp.Dispose();
+        }
+        
+        return icons;
+    }
+    
+    private void ShowSuccessIcon()
+    {
+        if (originalIcon == null)
+        {
+            originalIcon = trayIcon.Icon;
+        }
+        
+        // Cancel any existing success timer
+        if (successTimer != null)
+        {
+            successTimer.Stop();
+            successTimer.Dispose();
+        }
+        
+        // Show checkmark icon
+        Icon checkIcon = CreateCheckmarkIcon();
+        trayIcon.Icon = checkIcon;
+        
+        // Set timer to restore original icon after 2 seconds
+        successTimer = new Timer();
+        successTimer.Interval = 2000;
+        successTimer.Tick += (s, e) =>
+        {
+            successTimer.Stop();
+            successTimer.Dispose();
+            checkIcon.Dispose();
+            trayIcon.Icon = originalIcon;
+            originalIcon = null;
+        };
+        successTimer.Start();
+    }
+    
+    private Icon CreateCheckmarkIcon()
+    {
+        Bitmap bmp = new Bitmap(32, 32);
+        using (Graphics g = Graphics.FromImage(bmp))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.Clear(Color.Transparent);
+            
+            // Draw circle background
+            using (SolidBrush brush = new SolidBrush(Color.FromArgb(0, 200, 0)))
+            {
+                g.FillEllipse(brush, 4, 4, 24, 24);
+            }
+            
+            // Draw checkmark
+            using (Pen pen = new Pen(Color.White, 3))
+            {
+                pen.StartCap = LineCap.Round;
+                pen.EndCap = LineCap.Round;
+                g.DrawLines(pen, new Point[] {
+                    new Point(11, 16),
+                    new Point(14, 19),
+                    new Point(21, 12)
+                });
+            }
+        }
+        
+        IntPtr hIcon = bmp.GetHicon();
+        Icon icon = Icon.FromHandle(hIcon);
+        Icon iconCopy = (Icon)icon.Clone();
+        DestroyIcon(hIcon);
+        bmp.Dispose();
+        
+        return iconCopy;
     }
     
     protected override void Dispose(bool disposing)
