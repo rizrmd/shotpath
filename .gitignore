@@ -1,0 +1,21 @@
+# Build outputs
+*.exe
+*.pdb
+*.dll
+
+# Icon files (keep source PNGs, ignore generated ICO)
+icon.ico
+
+# IDE and editor files
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Temporary files
+*.tmp
+*.temp
+nul
+
+# Keep the final executable for releases
+!shotpath.exe

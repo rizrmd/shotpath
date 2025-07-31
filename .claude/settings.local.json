@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(compile.bat)",
+      "Bash(cmd /c:*)",
+      "Bash(C:WindowsMicrosoft.NETFramework64v4.0.30319csc.exe /target:winexe /reference:System.Drawing.dll /reference:System.Windows.Forms.dll ScreenshotApp.cs)",
+      "Bash(where:*)",
+      "Bash(powershell:*)",
+      "Bash(.ScreenshotApp.exe)",
+      "Bash(move:*)",
+      "Bash(ren:*)",
+      "Bash(mv:*)",
+      "Bash(git add:*)"
+    ],
+    "deny": []
+  }
+}
