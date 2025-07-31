@@ -63,12 +63,16 @@ if (Test-Path "shotpath.exe") {
     Write-Host ""
     Write-Host "Features:" -ForegroundColor Cyan
     Write-Host "- Runs in system tray (background)" -ForegroundColor White
-    Write-Host "- Press PrintScreen to take screenshot" -ForegroundColor White
+    Write-Host "- Hotkeys:" -ForegroundColor White
+    Write-Host "  - PrintScreen: Take screenshot and copy path" -ForegroundColor Gray
+    Write-Host "  - Ctrl+PrintScreen: Take screenshot and copy image" -ForegroundColor Gray
+    Write-Host "- Screenshots saved to temp\shotpath folder" -ForegroundColor White
     Write-Host "- Draw selection box to capture specific area" -ForegroundColor White
-    Write-Host "- Automatically copies file path to clipboard" -ForegroundColor White
     Write-Host "- Right-click tray icon for menu options:" -ForegroundColor White
-    Write-Host "  - Copy as Path: Copy file path to clipboard" -ForegroundColor Gray
-    Write-Host "  - Copy as Image: Copy image data to clipboard" -ForegroundColor Gray
+    Write-Host "  - Copy as Path (PrintScreen)" -ForegroundColor Gray
+    Write-Host "  - Copy as Image (Ctrl+PrintScreen)" -ForegroundColor Gray
+    Write-Host "  - Open Folder: Open screenshots folder" -ForegroundColor Gray
+    Write-Host "  - Clear Folder: Delete all screenshots" -ForegroundColor Gray
     Write-Host "  - Run at Startup: Enable/disable auto-start (ON by default)" -ForegroundColor Gray
     Write-Host "  - Exit: Close the application" -ForegroundColor Gray
     Write-Host "- Press ESC to cancel screenshot selection" -ForegroundColor White

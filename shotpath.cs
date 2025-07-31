@@ -18,6 +18,7 @@ public class ShotPath : Form
     private ToolStripMenuItem startupMenuItem;
     private const string APP_NAME = "ShotPath";
     private const string REGISTRY_KEY = @"SOFTWARE\Microsoft\Windows\CurrentVersion\Run";
+    private string screenshotFolder;
     
     [DllImport("user32.dll")]
     private static extern bool RegisterHotKey(IntPtr hWnd, int id, uint fsModifiers, uint vk);
@@ -29,12 +30,22 @@ public class ShotPath : Form
     private static extern bool DestroyIcon(IntPtr handle);
     
     private const int HOTKEY_ID = 9000;
+    private const int HOTKEY_ID_CTRL = 9001;
     private const uint VK_SNAPSHOT = 0x2C; // PrintScreen key
+    private const uint MOD_CONTROL = 0x0002;
     
     public ShotPath()
     {
         InitializeComponent();
         RegisterHotKey(this.Handle, HOTKEY_ID, 0, VK_SNAPSHOT);
+        RegisterHotKey(this.Handle, HOTKEY_ID_CTRL, MOD_CONTROL, VK_SNAPSHOT);
+        
+        // Create shotpath directory in temp
+        screenshotFolder = Path.Combine(Path.GetTempPath(), "shotpath");
+        if (!Directory.Exists(screenshotFolder))
+        {
+            Directory.CreateDirectory(screenshotFolder);
+        }
         
         // Ensure run at startup is enabled
         EnsureStartupEnabled();
@@ -47,8 +58,11 @@ public class ShotPath : Form
         this.ShowInTaskbar = false;
         
         trayMenu = new ContextMenuStrip();
-        trayMenu.Items.Add("Copy as Path", null, CopyAsPath);
-        trayMenu.Items.Add("Copy as Image", null, CopyAsImage);
+        trayMenu.Items.Add("Copy as Path (PrintScreen)", null, CopyAsPath);
+        trayMenu.Items.Add("Copy as Image (Ctrl+PrintScreen)", null, CopyAsImage);
+        trayMenu.Items.Add(new ToolStripSeparator());
+        trayMenu.Items.Add("Open Folder", null, OpenFolder);
+        trayMenu.Items.Add("Clear Folder", null, ClearFolder);
         trayMenu.Items.Add(new ToolStripSeparator());
         
         startupMenuItem = new ToolStripMenuItem("Run at Startup");
@@ -96,14 +110,22 @@ public class ShotPath : Form
     
     protected override void WndProc(ref Message m)
     {
-        if (m.Msg == 0x0312 && m.WParam.ToInt32() == HOTKEY_ID)
+        if (m.Msg == 0x0312)
         {
-            TakeScreenshot();
+            int id = m.WParam.ToInt32();
+            if (id == HOTKEY_ID)
+            {
+                TakeScreenshot(false); // Copy as path
+            }
+            else if (id == HOTKEY_ID_CTRL)
+            {
+                TakeScreenshot(true); // Copy as image
+            }
         }
         base.WndProc(ref m);
     }
     
-    private void TakeScreenshot()
+    private void TakeScreenshot(bool copyAsImage = false)
     {
         this.Hide();
         
@@ -119,18 +141,25 @@ public class ShotPath : Form
                     g.CopyFromScreen(selection.Location, Point.Empty, selection.Size);
                 }
                 
-                string tempPath = Path.GetTempPath();
                 string fileName = string.Format("screenshot_{0:yyyyMMdd_HHmmss}.png", DateTime.Now);
-                lastScreenshotPath = Path.Combine(tempPath, fileName);
+                lastScreenshotPath = Path.Combine(screenshotFolder, fileName);
                 
                 bitmap.Save(lastScreenshotPath, ImageFormat.Png);
                 lastScreenshotImage = (Image)bitmap.Clone();
             }
             
-            // Copy path by default
-            Clipboard.SetText(lastScreenshotPath);
-            
-            trayIcon.ShowBalloonTip(1000, "Screenshot Saved", Path.GetFileName(lastScreenshotPath), ToolTipIcon.Info);
+            if (copyAsImage)
+            {
+                // Copy as image
+                Clipboard.SetImage(lastScreenshotImage);
+                trayIcon.ShowBalloonTip(1000, "Screenshot Saved", "Image copied to clipboard", ToolTipIcon.Info);
+            }
+            else
+            {
+                // Copy path by default
+                Clipboard.SetText(lastScreenshotPath);
+                trayIcon.ShowBalloonTip(1000, "Screenshot Saved", Path.GetFileName(lastScreenshotPath), ToolTipIcon.Info);
+            }
         }
     }
     
@@ -152,9 +181,69 @@ public class ShotPath : Form
         }
     }
     
+    private void OpenFolder(object sender, EventArgs e)
+    {
+        try
+        {
+            if (!Directory.Exists(screenshotFolder))
+            {
+                Directory.CreateDirectory(screenshotFolder);
+            }
+            System.Diagnostics.Process.Start("explorer.exe", screenshotFolder);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Failed to open folder: " + ex.Message, "Error", 
+                           MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+    
+    private void ClearFolder(object sender, EventArgs e)
+    {
+        try
+        {
+            if (Directory.Exists(screenshotFolder))
+            {
+                var result = MessageBox.Show(
+                    "Are you sure you want to delete all screenshots in the folder?", 
+                    "Confirm Clear", 
+                    MessageBoxButtons.YesNo, 
+                    MessageBoxIcon.Warning);
+                
+                if (result == DialogResult.Yes)
+                {
+                    DirectoryInfo di = new DirectoryInfo(screenshotFolder);
+                    foreach (FileInfo file in di.GetFiles())
+                    {
+                        try
+                        {
+                            file.Delete();
+                        }
+                        catch { }
+                    }
+                    
+                    lastScreenshotPath = null;
+                    if (lastScreenshotImage != null)
+                    {
+                        lastScreenshotImage.Dispose();
+                        lastScreenshotImage = null;
+                    }
+                    
+                    trayIcon.ShowBalloonTip(1000, "Folder Cleared", "All screenshots have been deleted", ToolTipIcon.Info);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show("Failed to clear folder: " + ex.Message, "Error", 
+                           MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+    }
+    
     private void Exit(object sender, EventArgs e)
     {
         UnregisterHotKey(this.Handle, HOTKEY_ID);
+        UnregisterHotKey(this.Handle, HOTKEY_ID_CTRL);
         trayIcon.Visible = false;
         Application.Exit();
     }
