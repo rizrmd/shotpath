@@ -18,7 +18,11 @@ if (Test-Path "shotpath.exe") {
 # Convert PNG to ICO if needed
 if (!(Test-Path "icon.ico") -and (Test-Path "app.png")) {
     Write-Host "Converting app.png to icon.ico..." -ForegroundColor Yellow
-    & powershell -File convert-icon.ps1
+    if (Test-Path "convert-icon-hd.ps1") {
+        & powershell -File convert-icon-hd.ps1
+    } else {
+        & powershell -File convert-icon.ps1
+    }
 }
 
 # Use C# compiler directly for icon embedding
