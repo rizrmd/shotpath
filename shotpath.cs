@@ -42,16 +42,15 @@ public class ShotPath : Form
     private const int HOTKEY_ID = 9000;
     private const int HOTKEY_ID_CTRL = 9001;
     private const int HOTKEY_ID_ALT = 9002;
-    private const uint VK_SNAPSHOT = 0x2C; // PrintScreen key
+    private const uint VK_J = 0x4A; // J key
+    private const uint MOD_WIN = 0x0008; // Windows key modifier
+    private const uint MOD_SHIFT = 0x0004; // Shift key modifier
     private const uint MOD_CONTROL = 0x0002;
     private const uint MOD_ALT = 0x0001;
     
     public ShotPath()
     {
         InitializeComponent();
-        RegisterHotKey(this.Handle, HOTKEY_ID, 0, VK_SNAPSHOT);
-        RegisterHotKey(this.Handle, HOTKEY_ID_CTRL, MOD_CONTROL, VK_SNAPSHOT);
-        RegisterHotKey(this.Handle, HOTKEY_ID_ALT, MOD_ALT, VK_SNAPSHOT);
         
         // Create shotpath directory in temp
         screenshotFolder = Path.Combine(Path.GetTempPath(), "shotpath");
@@ -71,9 +70,9 @@ public class ShotPath : Form
         this.ShowInTaskbar = false;
         
         trayMenu = new ContextMenuStrip();
-        trayMenu.Items.Add("Copy as Path (PrintScreen)", null, CopyAsPathMenu);
-        trayMenu.Items.Add("Copy as Image (Ctrl+PrintScreen)", null, CopyAsImageMenu);
-        trayMenu.Items.Add("Copy as Imgur URL (Alt+PrintScreen)", null, CopyAsImgurMenu);
+        trayMenu.Items.Add("Copy as Path (Alt+J)", null, CopyAsPathMenu);
+        trayMenu.Items.Add("Copy as Image (Alt+Ctrl+J)", null, CopyAsImageMenu);
+        trayMenu.Items.Add("Copy as Imgur URL (Alt+Shift+J)", null, CopyAsImgurMenu);
         trayMenu.Items.Add(new ToolStripSeparator());
         trayMenu.Items.Add("Open Folder", null, OpenFolder);
         trayMenu.Items.Add("Clear Folder", null, ClearFolder);
@@ -119,7 +118,21 @@ public class ShotPath : Form
         trayIcon.ContextMenuStrip = trayMenu;
         trayIcon.Visible = true;
         
-        this.Load += (s, e) => this.Hide();
+        this.Load += (s, e) => {
+            this.Hide();
+            
+            // Register hotkeys after form is loaded
+            bool hotkey1 = RegisterHotKey(this.Handle, HOTKEY_ID, MOD_ALT, VK_J);
+            bool hotkey2 = RegisterHotKey(this.Handle, HOTKEY_ID_CTRL, MOD_ALT | MOD_CONTROL, VK_J);
+            bool hotkey3 = RegisterHotKey(this.Handle, HOTKEY_ID_ALT, MOD_ALT | MOD_SHIFT, VK_J);
+            
+            if (!hotkey1 || !hotkey2 || !hotkey3)
+            {
+                trayIcon.ShowBalloonTip(3000, "Hotkey Registration Failed", 
+                    "Failed to register Alt+J hotkeys. They may be in use by another application.", 
+                    ToolTipIcon.Warning);
+            }
+        };
     }
     
     protected override void WndProc(ref Message m)

@@ -8,8 +8,9 @@ A lightweight Windows screenshot tool that runs in the system tray, providing qu
 
 - 🖼️ **System tray application** - Runs quietly in the background
 - ⌨️ **Global hotkeys**:
-  - `PrintScreen` - Take screenshot and copy file path to clipboard
-  - `Ctrl+PrintScreen` - Take screenshot and copy image to clipboard
+  - `Alt+J` - Take screenshot and copy file path to clipboard
+  - `Alt+Ctrl+J` - Take screenshot and copy image to clipboard
+  - `Alt+Shift+J` - Take screenshot and upload to Imgur (copy URL)
 - 🎯 **Selection tool** - Draw a box to capture specific screen areas
 - 📁 **Organized storage** - Screenshots saved to `%TEMP%\shotpath\` folder
 - 🚀 **Auto-start** - Runs at Windows startup by default
@@ -26,7 +27,7 @@ A lightweight Windows screenshot tool that runs in the system tray, providing qu
 
 ### Taking Screenshots
 
-1. Press `PrintScreen` to capture a screenshot
+1. Press `Alt+J` to capture a screenshot
 2. Draw a selection box around the area you want to capture
 3. The file path is automatically copied to your clipboard
 4. Press `ESC` to cancel the selection
@@ -35,8 +36,9 @@ A lightweight Windows screenshot tool that runs in the system tray, providing qu
 
 Right-click the tray icon to access:
 
-- **Copy as Path (PrintScreen)** - Copy the last screenshot's file path
-- **Copy as Image (Ctrl+PrintScreen)** - Copy the last screenshot as image data
+- **Copy as Path (Alt+J)** - Take screenshot and copy file path
+- **Copy as Image (Alt+Ctrl+J)** - Take screenshot and copy image data
+- **Copy as Imgur URL (Alt+Shift+J)** - Take screenshot and upload to Imgur
 - **Open Folder** - Open the screenshots folder in Windows Explorer
 - **Clear Folder** - Delete all screenshots (with confirmation)
 - **Run at Startup** - Toggle auto-start with Windows
@@ -92,8 +94,9 @@ Format: `screenshot_YYYYMMDD_HHMMSS.png`
 
 | Shortcut | Action |
 |----------|--------|
-| `PrintScreen` | Take screenshot & copy path |
-| `Ctrl+PrintScreen` | Take screenshot & copy image |
+| `Alt+J` | Take screenshot & copy path |
+| `Alt+Ctrl+J` | Take screenshot & copy image |
+| `Alt+Shift+J` | Take screenshot & upload to Imgur |
 | `ESC` | Cancel screenshot selection |
 
 ## Troubleshooting

@@ -1,4 +1,5 @@
 {
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
       "Bash(compile.bat)",
@@ -14,7 +15,10 @@
       "Bash(git commit:*)",
       "Bash(git config:*)",
       "Bash(git push:*)",
-      "Bash(gh release create:*)"
+      "Bash(gh release create:*)",
+      "Bash(dir:*)",
+      "Bash(gh release:*)",
+      "Bash(start shotpath.exe)"
     ],
     "deny": []
   }
