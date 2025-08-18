@@ -36,9 +36,6 @@ public class ShotPath : Form
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     private static extern bool DestroyIcon(IntPtr handle);
     
-    [DllImport("user32.dll")]
-    private static extern bool SetProcessDPIAware();
-    
     private const int HOTKEY_ID = 9000;
     private const int HOTKEY_ID_CTRL = 9001;
     private const int HOTKEY_ID_ALT = 9002;
@@ -160,24 +157,27 @@ public class ShotPath : Form
     {
         // Small delay to let menus settle
         System.Threading.Thread.Sleep(100);
+
+        // Use virtual screen to capture entire desktop (handles multi-monitor automatically)
+        Rectangle virtualScreen = SystemInformation.VirtualScreen;
+        selectionForm = new SelectionForm(virtualScreen);
         
-        selectionForm = new SelectionForm();
         if (selectionForm.ShowDialog() == DialogResult.OK)
         {
             Rectangle selection = selectionForm.Selection;
             
-            // Use the pre-captured screenshot from SelectionForm
             using (Bitmap bitmap = new Bitmap(selection.Width, selection.Height))
             {
                 using (Graphics g = Graphics.FromImage(bitmap))
                 {
-                    // Account for virtual screen offset
+                    // Selection coordinates are in virtual screen space
                     Rectangle sourceRect = new Rectangle(
-                        selection.X - SystemInformation.VirtualScreen.X,
-                        selection.Y - SystemInformation.VirtualScreen.Y,
+                        selection.X - virtualScreen.X,
+                        selection.Y - virtualScreen.Y,
                         selection.Width,
                         selection.Height
                     );
+                    
                     g.DrawImage(selectionForm.Screenshot, 0, 0, sourceRect, GraphicsUnit.Pixel);
                 }
                 
@@ -571,10 +571,16 @@ public class ShotPath : Form
         base.Dispose(disposing);
     }
     
+    [DllImport("user32.dll")]
+    private static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+    
+    private static readonly IntPtr DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 = new IntPtr(-4);
+
     [STAThread]
     static void Main()
     {
-        SetProcessDPIAware();
+        // Use modern DPI awareness for proper multi-monitor support
+        SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new ShotPath());
@@ -597,29 +603,29 @@ public class SelectionForm : Form
     [DllImport("user32.dll")]
     private static extern int GetWindowLong(IntPtr hWnd, int nIndex);
     
+    
     private const int GWL_EXSTYLE = -20;
     private const int WS_EX_TRANSPARENT = 0x00000020;
     private const int WS_EX_LAYERED = 0x00080000;
     
-    public SelectionForm()
+    public SelectionForm(Rectangle virtualScreen)
     {
-        // Set DPI awareness
         this.AutoScaleMode = AutoScaleMode.None;
         
-        // Get virtual screen bounds (all monitors)
-        Rectangle bounds = SystemInformation.VirtualScreen;
-        
-        // Capture screenshot before showing form
-        screenshot = new Bitmap(bounds.Width, bounds.Height);
+        // Capture screenshot of entire virtual screen
+        screenshot = new Bitmap(virtualScreen.Width, virtualScreen.Height);
         using (Graphics g = Graphics.FromImage(screenshot))
         {
-            g.CopyFromScreen(bounds.X, bounds.Y, 0, 0, bounds.Size);
+            g.CopyFromScreen(virtualScreen.X, virtualScreen.Y, 0, 0, virtualScreen.Size);
         }
         
         this.FormBorderStyle = FormBorderStyle.None;
         this.Cursor = Cursors.Cross;
-        this.Location = new Point(bounds.X, bounds.Y);
-        this.Size = new Size(bounds.Width, bounds.Height);
+        this.StartPosition = FormStartPosition.Manual;
+        
+        // Position form to cover entire virtual screen
+        this.Location = virtualScreen.Location;
+        this.Size = virtualScreen.Size;
         this.TopMost = true;
         this.DoubleBuffered = true;
         this.ShowInTaskbar = false;
@@ -635,7 +641,8 @@ public class SelectionForm : Form
     {
         if (e.Button == MouseButtons.Left)
         {
-            startPoint = e.Location;
+            // Convert form-local coordinates to global screen coordinates
+            startPoint = new Point(e.X + this.Location.X, e.Y + this.Location.Y);
             isSelecting = true;
         }
     }
@@ -644,10 +651,13 @@ public class SelectionForm : Form
     {
         if (isSelecting)
         {
-            int x = Math.Min(startPoint.X, e.X);
-            int y = Math.Min(startPoint.Y, e.Y);
-            int width = Math.Abs(startPoint.X - e.X);
-            int height = Math.Abs(startPoint.Y - e.Y);
+            // Convert form-local coordinates to global screen coordinates
+            Point currentPoint = new Point(e.X + this.Location.X, e.Y + this.Location.Y);
+            
+            int x = Math.Min(startPoint.X, currentPoint.X);
+            int y = Math.Min(startPoint.Y, currentPoint.Y);
+            int width = Math.Abs(startPoint.X - currentPoint.X);
+            int height = Math.Abs(startPoint.Y - currentPoint.Y);
             
             selection = new Rectangle(x, y, width, height);
             this.Invalidate();
@@ -677,9 +687,17 @@ public class SelectionForm : Form
         
         if (selection.Width > 0 && selection.Height > 0)
         {
+            // Convert global selection coordinates to local form coordinates for drawing
+            Rectangle localSelection = new Rectangle(
+                selection.X - this.Location.X,
+                selection.Y - this.Location.Y,
+                selection.Width,
+                selection.Height
+            );
+            
             // Draw darkened overlay outside selection
             Region region = new Region(this.ClientRectangle);
-            region.Exclude(selection);
+            region.Exclude(localSelection);
             
             using (SolidBrush brush = new SolidBrush(Color.FromArgb(120, 0, 0, 0)))
             {
@@ -690,7 +708,7 @@ public class SelectionForm : Form
             using (Pen pen = new Pen(Color.Red, 2))
             {
                 pen.DashStyle = System.Drawing.Drawing2D.DashStyle.Dash;
-                e.Graphics.DrawRectangle(pen, selection);
+                e.Graphics.DrawRectangle(pen, localSelection);
             }
         }
         else
